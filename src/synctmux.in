@@ -269,7 +269,9 @@ else
   exit 1
 fi
 
-echo ${tmux_command}
-#eval ${tmux_command}
+# Following line is for debugging purpose.
+# echo "${tmux_command}"
+
+eval "${tmux_command}"
 
 exit 0
