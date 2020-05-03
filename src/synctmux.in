@@ -10,9 +10,9 @@ LAYOUT=([2]="1x2"  [3]="1x3"  [4]="2x2"  [5]="3x2"  \
         [6]="3x2"  [7]="4x2"  [8]="4x2"  [9]="3x3"  [10]="3x4" \
         [11]="3x4" [12]="3x4" [13]="4x4" [14]="4x4" [15]="4x4" \
         [16]="4x4" [17]="5x4" [18]="5x4" [19]="5x4" [20]="5x4")
-# These constants are used in splitw check.
-PANE_MIN_ROW=1
-PANE_MIN_COL=1
+# These constants are used in splitw check. Actually, a minimum of PANE_MIN_{ROW,COL} is 1, but display of characters will be strange.
+PANE_MIN_ROW=2
+PANE_MIN_COL=2
 H_BORDER=1
 V_BORDER=1
 STATUS_LINE=1
