@@ -15,6 +15,7 @@ PANE_MIN_ROW=1
 PANE_MIN_COL=1
 H_BORDER=1
 V_BORDER=1
+STATUS_LINE=1
 WHOLE_ROW=$(tput lines)
 WHOLE_COL=$(tput cols)
 
@@ -88,7 +89,7 @@ set_number_layout() {
   fi
   # Check whether "splitw -h" will success.
   row=$(echo "${layout}" |cut -d "x" -f 1)
-  REQ_ROW=$((PANE_MIN_ROW*row+H_BORDER*(row-1)))
+  REQ_ROW=$((STATUS_LINE+PANE_MIN_ROW*row+H_BORDER*(row-1)))
   if [[ ${WHOLE_ROW} -lt ${REQ_ROW} ]]; then
     echo "Size of row is too nallow to split window horizontally." 1>&2
     exit 1
