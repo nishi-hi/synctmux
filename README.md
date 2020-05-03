@@ -9,12 +9,13 @@ Synchronize tmux. This is a software for executing the same command on local hos
 
 ## Getting started
 ```
-wget https://github.com/nishi-hi/synctmux/releases/latest/synctmux-<version>.tar.xz
+wget https://github.com/nishi-hi/synctmux/releases/latest/synctmux-<version>.tar.gz
 or
-curl -O https://github.com/nishi-hi/synctmux/releases/latest/synctmux-<version>.tar.xz
-tar xJf synctmux-<version>.tar.xz --no-same-permission
+curl -O https://github.com/nishi-hi/synctmux/releases/latest/synctmux-<version>.tar.gz
+tar xzf synctmux-<version>.tar.gz --no-same-permission
 cd synctmux-<version>
 ./configure --prefix=<path_to_install>
 make
 make install
+<path_to_install>/bin/synctmux --help
 ```
