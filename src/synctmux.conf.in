@@ -1,0 +1,34 @@
+# Server options
+set -sg set-clipboard off
+
+# Session options
+set -g default-terminal "screen-256color"
+set -g base-index 1
+set -g history-limit 10000
+
+# Window options
+setw -g mouse on
+setw -g mode-keys vi
+setw -g mode-style bg=colour18
+setw -g status-interval 0
+setw -g status-position top
+setw -g status-style bg=colour18
+setw -g status-right "synchronize-panes #(@tmux@ showw -v synchronize-panes |awk 'BEGIN { if (length($1) == 0) { print \"#[fg=colour240]off\" } } { if ($1==\"on\") { print \"#[fg=colour34]on\" } else if ($1 == \"off\") { print \"#[fg=colour240]off\" } else { print \"#[fg=colour52]?\" } }')#[default] "
+
+setw -g pane-base-index 1
+setw -g pane-active-border-style fg=colour34
+setw -g pane-border-style fg=colour240
+
+if-shell "[ \"$(@tmux@ showw -v synchronize-panes |awk 'BEGIN { if (length($1) == 0) { print \"off\" } } { if ($1==\"on\") { print \"on\" } else if ($1 == \"off\") { print \"off\" } else { print \"?\" } }')\" = \"on\" ]" \
+  { setw -g window-style bg=terminal } \
+  { setw -g window-style bg=colour235; setw -g window-active-style bg=terminal }
+
+# Key bindings
+bind R { source-file @sysconfdir@/synctmux.conf; display "source-file done" }
+bind -n F2 if-shell "[ \"$(@tmux@ showw -v synchronize-panes)\" = \"on\" ]" \
+  { setw synchronize-panes off; setw window-style bg=colour235; refresh -S } \
+  { setw synchronize-panes on ; setw window-style bg=terminal ; refresh -S }
+bind n { next; refresh -S }
+bind p { prev; refresh -S }
+bind -n MouseDown1Status { selectw -t =; refresh -S }
+bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "@bindir@/truntail | @copy_to_clipboard@"

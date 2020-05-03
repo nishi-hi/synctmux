@@ -1,0 +1,274 @@
+#!/bin/bash
+
+VERSION="@VERSION@"
+PACKAGE="@PACKAGE@"
+TMUX="@tmux@"
+TMUX_OPT="-f @sysconfdir@/synctmux.conf"
+SESS_NAME="${PACKAGE}"
+# ROWxCOL
+LAYOUT=([2]="1x2"  [3]="1x3"  [4]="2x2"  [5]="3x2"  \
+        [6]="3x2"  [7]="4x2"  [8]="4x2"  [9]="3x3"  [10]="3x4" \
+        [11]="3x4" [12]="3x4" [13]="4x4" [14]="4x4" [15]="4x4" \
+        [16]="4x4" [17]="5x4" [18]="5x4" [19]="5x4" [20]="5x4")
+# These constants are used in splitw check.
+PANE_MIN_ROW=1
+PANE_MIN_COL=1
+H_BORDER=1
+V_BORDER=1
+WHOLE_ROW=$(tput lines)
+WHOLE_COL=$(tput cols)
+
+print_usage() {
+  cat <<EOS 1>&2
+${PACKAGE} - synchronized tmux
+
+Usage:
+  ${PACKAGE} -n NUMBER|ROWxCOL
+  ${PACKAGE} -n NUMBER|ROWxCOL -u USER -h HOST
+  ${PACKAGE} -n NUMBER|ROWxCOL -h [USER@]HOST
+  ${PACKAGE} -u USER -h [USER1@]HOST1[,[USER2@]HOST2,...]
+  ${PACKAGE} -h [USER1@]HOST1[,[USER2@]HOST2,...]
+
+Options:
+  -n NUMBER|ROWxCOL  Number of panes. (e.g. "2x3" opens 6 panes in 2 rows and 3 columns.)
+  -u USER            Username for logging in to the remote host.
+                     Without this option, current username is used as default.
+  -h [USER@]HOST     Hostname of the remote host(s).
+                     If an username is given, it overrides that of -u option.
+                     Without -n option, it is able to specify a plural hostname
+                     in the comma separated format. 
+  --help             Print usage and exit.
+  --version          Print version number and exit.
+EOS
+}
+
+print_version() {
+  echo "${PACKAGE} version ${VERSION}" 1>&2
+}
+
+set_number_layout() {
+  layout=""
+  number=0
+  # -n option is used.
+  if [[ ${n_cnt} -eq 1 ]]; then
+    # Check whether $n_str is a number from 2 to 20 inclusive.
+    if [[ "${n_str}" =~ ^([2-9]|1[0-9]|20)$ ]]; then
+      number=${n_str}
+      layout="${LAYOUT[${number}]}"
+    # Check whether $n_str has NUMxNUM format value.
+    elif [[ "${n_str}" =~ ^[0-9]+x[0-9]+$ ]]; then
+      row=$(echo "${l_str}" |cut -d "x" -f 1)
+      col=$(echo "${l_str}" |cut -d "x" -f 2)
+      number=$((row*col))
+      if [[ ${number} -lt 2 && ${number} -gt 20 ]]; then
+        echo "Specify a layout which multiply row and column from 2 to 20 inclusive." 1>&2
+        print_usage
+        exit 1
+      fi
+      layout="${n_str}"
+    else
+      echo "Invalid argument." 1>&2
+      print_usage
+      exit 1
+    fi
+    if [[ ${h_cnt} -eq 1 && "${h_str}" =~ , ]]; then
+      echo "Cannot use comma separated host list when -n option is used." 1>&2
+      print_usage
+      exit 1
+    fi
+  # -n option is not used.
+  elif [[ ${n_cnt} -eq 0 ]]; then
+    number=$(echo "${h_str}" |awk -F',' '{print NF}')
+    if [[ ${number} -lt 2 || ${number} -gt 20 ]]; then
+      echo "Specify a number from 2 to 20 inclusive." 1>&2
+      print_usage
+      exit 1
+    fi
+    layout="${LAYOUT[${number}]}"
+  fi
+  # Check whether "splitw -h" will success.
+  row=$(echo "${layout}" |cut -d "x" -f 1)
+  REQ_ROW=$((PANE_MIN_ROW*row+H_BORDER*(row-1)))
+  if [[ ${WHOLE_ROW} -lt ${REQ_ROW} ]]; then
+    echo "Size of row is too nallow to split window horizontally." 1>&2
+    exit 1
+  fi
+  # Check whether "splitw -v" will success.
+  col=$(echo "${layout}" |cut -d "x" -f 2)
+  REQ_COL=$((PANE_MIN_COL*col+V_BORDER*(col-1)))
+  if [[ ${WHOLE_COL} -lt ${REQ_COL} ]]; then
+    echo "Size of column is too nallow to split window vertically." 1>&2
+    exit 1
+  fi
+}
+
+add_split_command() {
+  row=$(echo "${layout}" |cut -d "x" -f 1)
+  col=$(echo "${layout}" |cut -d "x" -f 2)
+  # Add vertical split commands.
+  if [[ ${row} -gt 1 ]]; then
+    for r in $(seq $((row-1))); do tmux_command+=" \; splitw -v \; selectl -E"; done
+  fi
+  if [[ ${col} -eq 1 ]]; then return; fi
+  p=1
+  for r in $(seq ${row}); do
+    h=$((col-1))
+    if [[ ${r} -eq ${row} ]]; then
+      m=$((number%col))
+      if [[ ${m} -eq 1 ]]; then
+        return
+      elif [[ ${m} -gt 1 ]]; then
+        h=$((m-1))
+      # If ${m} is equal to 0, ${h} uses default value.
+      fi
+    fi
+    tmux_command+=" \; selectp -t ${p}"
+    # Add horizontal split commands.
+    for c in $(seq ${h}); do tmux_command+=" \; splitw -h \; selectl -E"; done
+    p=$((p+col))
+  done
+}
+
+add_attach_command() {
+  tmux_command+=" \; setw synchronize-panes on \; setw window-style bg=terminal \; a -t ${SESS_NAME}"
+}
+
+set_user_hosts() {
+  user_hosts=()
+  user="$(whoami)"
+  # When -u option is used, ${user} is overwritten.
+  if [[ ${u_cnt} -eq 1 ]]; then user="${u_str}"; fi
+  if [[ "${h_str}" =~ , ]]; then
+    for s in $(echo "${h_str}" |tr ',' '\n'); do
+      if [[ "${s}" =~ ^[^@]+@[^@]+$ ]]; then
+        user_hosts+=("${s}")
+      else  # Regards ${s} as hostname.
+        user_hosts+=("${user}@${s}")
+      fi
+    done
+  else
+    if [[ "${h_str}" =~ ^[^@]+@[^@]+$ ]]; then
+      for i in $(seq ${number}) ; do user_hosts+=("${h_str}") ; done
+    else
+      for i in $(seq ${number}) ; do user_hosts+=("${user}@${h_str}") ; done
+    fi
+  fi
+}
+
+add_connect_command() {
+  echo "${user_hosts[@]}"
+  p=1
+  while read -r user_host; do
+    tmux_command+=" \; send -t ${p} 'ssh ${user_host}' C-l"
+    ((p++))
+  done < <(IFS=$'\n' ; echo "${user_hosts[*]}")
+}
+
+# Initialize variables of option counters and arguments.
+u_cnt=0 h_cnt=0 n_cnt=0 help_cnt=0 ver_cnt=0
+u_str="" h_str="" n_str=""
+
+# Set arguments in variables. Increase option counters.
+while getopts ":u:h:n:-:" opt; do
+  case "${opt}" in
+    "-")
+      case "${OPTARG}" in
+        "help")
+          ((help_cnt++))
+        ;;
+        "version")
+          ((ver_cnt++))
+        ;;
+        *)
+          echo "Invalid option --${OPTARG}." 1>&2
+          print_usage
+          exit 1
+        ;;
+      esac
+    ;;
+    "u")
+      ((u_cnt++))
+      u_str="${OPTARG}"
+    ;;
+    "h")
+      ((h_cnt++))
+      h_str="${OPTARG}"
+    ;;
+    "n")
+      ((n_cnt++))
+      n_str="${OPTARG}"
+    ;;
+    ":")
+      echo "Option -${OPTARG} requires an argument." 1>&2
+      print_usage
+      exit 1
+    ;;
+    "?")
+      echo "Invalid option -${OPTARG}." 1>&2
+      print_usage
+      exit 1
+    ;;
+  esac
+done
+
+# Check whether each option is used only once.
+if [[ ${u_cnt} -gt 1 || ${h_cnt} -gt 1 || ${n_cnt} -gt 1 || ${help_cnt} -gt 1 || ${ver_cnt} -gt 1 ]]; then
+  echo "Each option can use only once." 1>&2
+  print_usage
+  exit 1
+fi
+
+# Only --help or --version option is used.
+if [[ ${u_cnt} -eq 0 && ${h_cnt} -eq 0 && ${n_cnt} -eq 0 ]]; then
+  if [[ ${help_cnt} -eq 1 && ${ver_cnt} -eq 0 ]]; then
+    print_usage
+    exit 0
+  elif [[ ${help_cnt} -eq 0 && ${ver_cnt} -eq 1 ]]; then
+    print_version
+    exit 0
+  else  # Includes a case that no options are specified.
+    print_usage
+    exit 1
+  fi
+# --help and --version options are not used.
+elif [[ ${help_cnt} -eq 0 && ${ver_cnt} -eq 0 ]]; then
+  # Initialize tmux command.
+  tmux_command="${TMUX} ${TMUX_OPT} new -s ${SESS_NAME}"
+  # When -h option is not used, create sessions.
+  if [[ ${h_cnt} -eq 0 ]]; then
+    if [[ ${u_cnt} -eq 0 && ( ${n_cnt} -eq 1 || ${n_cnt} -eq 0 ) ]]; then
+      set_number_layout
+      add_split_command
+      add_attach_command
+    elif [[ ${u_cnt} -eq 1 && ${n_cnt} -eq 1 ]]; then
+      echo "Cannot use both -u and -n options without -h option at the same time." 1>&2
+      print_usage
+      exit 1
+    elif [[ ${u_cnt} -eq 1 && ${n_cnt} -eq 0 ]]; then
+      echo "Cannot use -u option without -h option at the same time." 1>&2
+      print_usage
+      exit 1
+    else
+      print_usage
+      exit 1
+    fi
+  # When -h option is used, create sessions and connect remote hosts.
+  elif [[ ${h_cnt} -eq 1 ]]; then
+    set_number_layout
+    add_split_command
+    set_user_hosts
+    add_connect_command
+    add_attach_command
+  else
+    print_usage
+    exit 1
+  fi
+else
+  print_usage
+  exit 1
+fi
+
+echo ${tmux_command}
+#eval ${tmux_command}
+
+exit 0
