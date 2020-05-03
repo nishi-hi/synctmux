@@ -3,7 +3,7 @@
 VERSION="@VERSION@"
 PACKAGE="@PACKAGE@"
 TMUX="@tmux@"
-TMUX_OPT="-f @sysconfdir@/synctmux.conf"
+TMUX_OPT="-f @expanded_sysconfdir@/synctmux.conf"
 SESS_NAME="${PACKAGE}"
 # ROWxCOL
 LAYOUT=([2]="1x2"  [3]="1x3"  [4]="2x2"  [5]="3x2"  \
