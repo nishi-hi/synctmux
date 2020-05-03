@@ -31,4 +31,4 @@ bind -n F2 if-shell "[ \"$(@tmux@ showw -v synchronize-panes)\" = \"on\" ]" \
 bind n { next; refresh -S }
 bind p { prev; refresh -S }
 bind -n MouseDown1Status { selectw -t =; refresh -S }
-bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "@bindir@/truntail | @copy_to_clipboard@"
+bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "@expanded_bindir@/truntail | @copy_to_clipboard@"
